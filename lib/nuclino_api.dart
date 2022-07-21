@@ -1,8 +1,9 @@
 library nuclino_api;
 
+import 'dart:convert';
 import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
+import 'package:http/http.dart' as http;
 import 'package:nuclino_api/src/child.dart';
 import 'package:nuclino_api/src/file.dart';
 import 'package:nuclino_api/src/response.dart';
@@ -19,15 +20,15 @@ export 'src/workspace.dart';
 class Nuclino {
   Nuclino({
     required this.apiKey,
-    Dio? dio,
+    http.Client? client,
     Map<String, String>? headers,
     this.endpoint = 'https://api.nuclino.com/v0',
-  })  : dio = dio ?? Dio(),
+  })  : client = client ?? http.Client(),
         headers = headers ?? _headers(apiKey);
 
   final Map<String, String> headers;
   final String apiKey;
-  final Dio dio;
+  final http.Client client;
   final String endpoint;
 
   ChildService? _children;
@@ -51,8 +52,9 @@ class Nuclino {
     Map<String, String>? params,
     required JSONConverter<T> convert,
   }) async {
-    final response = await _request(path, params: params);
-    return response.when(
+    final res = await _get(path, params: params);
+    return res.when(
+      fail: (message) => throw Exception(message),
       success: (data) => convert(data),
       error: (message) => throw NuclinoException(message),
     );
@@ -64,48 +66,66 @@ class Nuclino {
     Map<String, String>? params,
     required JSONConverter<T> convert,
   }) async {
-    final response = await _request(path, params: params);
-    return response.when(
+    final res = await _get(path, params: params);
+    return res.when(
+      fail: (message) => throw NuclinoException(message),
       error: (message) => throw NuclinoException(message),
       success: (data) => _convertList<T>(data, convert),
     );
   }
 
   List<T> _convertList<T>(Map<String, dynamic> data, JSONConverter<T> convert) {
-    if (_isList(data)) {
-      return (data['results'] as List<Map<String, dynamic>>)
-          .map((e) => convert(e))
+    if (data['object'] == 'list') {
+      return (data['results'] as List)
+          .map((dynamic e) => convert(e as Map<String, dynamic>))
           .toList();
     } else {
       return [convert(data)];
     }
   }
 
-  bool _isList(Map<String, dynamic> data) {
-    return data['object'] == 'list';
-  }
-
-  Future<NuclinoResponse> _request(
+  Future<NuclinoResponse> _get(
     String path, {
     Map<String, String>? params,
   }) async {
-    final response = await dio.get<Map<String, dynamic>>(
-      '$endpoint/$path',
-      options: Options(headers: headers),
-      queryParameters: params,
+    final url = _buildUrl(path, params);
+    final response = await client.get(
+      url,
+      headers: headers,
     );
-    return NuclinoResponse.fromJson(response.data!);
+
+    final dynamic data = json.decode(response.body);
+    return NuclinoResponse.fromJson(data as Map<String, dynamic>);
+  }
+
+  Uri _buildUrl(String path, Map<String, String>? params) {
+    final url = StringBuffer();
+    url
+      ..write(endpoint)
+      ..write(path);
+    if (params != null) {
+      url.write('?');
+      params.forEach((key, value) {
+        url.write('$key=$value&');
+      });
+      url.write('&');
+    }
+    return Uri.parse(url.toString());
   }
 
   /// Download files from within an item.
   Future<Uint8List> download(String path) async {
-    final response = await dio.get<Uint8List>(
-      path,
-      options: Options(
-        responseType: ResponseType.bytes,
-      ),
+    final url = Uri(
+      scheme: 'https',
+      host: 'api.nuclino.com',
+      path: path,
     );
-    return response.data!;
+
+    final response = await client.get(
+      url,
+      headers: headers,
+    );
+    return response.bodyBytes;
   }
 }
 

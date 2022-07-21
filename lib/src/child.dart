@@ -69,13 +69,13 @@ class ChildService extends Service {
 
   Future<List<Child>> getChildren({ChildQueryParams? params}) =>
       nuclino.fetchAll(
-        'items',
+        '/items',
         params: params?.toMap(),
         convert: Child.fromJson,
       );
 
   Future<Child> getChild(String id) => nuclino.fetch(
-        'items/$id',
+        '/items/$id',
         convert: Child.fromJson,
       );
 }
