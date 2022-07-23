@@ -115,11 +115,10 @@ class Nuclino {
 
   /// Download files from within an item.
   Future<Uint8List> download(String path) async {
-    final url = Uri(
-      scheme: 'https',
-      host: 'api.nuclino.com',
-      path: path,
-    );
+    if (!path.startsWith('https://nuclino-files')) {
+      throw Exception('Downloading non-nuclino-files is not supported.');
+    }
+    final url = Uri.parse(path);
 
     final response = await client.get(
       url,
